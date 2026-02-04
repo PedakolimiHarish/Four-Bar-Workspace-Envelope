@@ -9,7 +9,7 @@ All numerical computations are performed in Python, while visualization is handl
 
 The system is designed for **educational, academic, and demonstration purposes**, with a clean separation between computation and visualization.
 
----
+
 
 ## Key Capabilities
 
@@ -22,7 +22,7 @@ The system is designed for **educational, academic, and demonstration purposes**
 - Centered and scaled visualization for clear interpretation
 - Modular and team-friendly project structure
 
----
+
 
 ## Technology Stack
 
@@ -37,7 +37,6 @@ The system is designed for **educational, academic, and demonstration purposes**
 - **JavaScript**
 - **Plotly.js** — Real-time animation and visualization
 
----
 
 ## Project Structure & File Responsibilities
 
@@ -123,7 +122,7 @@ Live Browser Animation (plot.js)
 ## Installation & Setup
 ### 1. Clone the Repository
 ```bash
-git clone <repository-url>
+git clone git@github.com:PedakolimiHarish/Four-Bar-Workspace-Envelope.git
 cd four_bar_workspace
 ```
 ### 2. Install Dependencies
@@ -201,7 +200,7 @@ The following properties describe the kinematic characteristics of the current f
 - The **linkage type** is determined using the Grashof condition.
 - The **validity index** represents the percentage of the input cycle over which the solver produces physically valid configurations.
 - The **Grashof index** is defined as:  
-  \[
+```txt
   (s + l) - (p + q)
-  \]
+  ```
   where `s` is the shortest link, `l` the longest link, and `p`, `q` the remaining links.
