@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Four-Bar Workspace Envelope</title>
+
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="/static/plot.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Main vertical container */
+        .page {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            /* CENTER EVERYTHING HORIZONTALLY */
+            width: 100%;
+        }
+
+        /* Title */
+        h3 {
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        /* Input row */
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            /* CENTER INPUTS */
+            margin-bottom: 15px;
+        }
+
+        .controls input {
+            width: 60px;
+            padding: 3px;
+            text-align: center;
+        }
+
+        .controls button {
+            padding: 5px 12px;
+            cursor: pointer;
+        }
+
+        /* Plot container */
+        #plot {
+            width: 800px;
+            height: 600px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="page">
+
+        <h3>Four-Bar Linkage</h3>
+
+        <div class="controls">
+            L1: <input id="L1" value="4">
+            L2: <input id="L2" value="5">
+            L3: <input id="L3" value="5">
+            L4: <input id="L4" value="4.9">
+
+            <button onclick="runAnimation()">Run</button>
+        </div>
+
+        <div id="plot"></div>
+
+    </div>
+
+</body>
+
+</html>
