@@ -1,10 +1,76 @@
+let frames = [];
+let animationIndex = 0;
+let animationTimer = null;
+
+
+
+
+function resetAnimation() {
+
+    pauseAnimation();
+
+    animationIndex = 0;
+
+    if (frames.length) {
+        Plotly.animate("plot", frames[0], {
+            frame: { duration: 0, redraw: true },
+            transition: { duration: 0 }
+        });
+    }
+}
+
+function playAnimation() {
+
+    if (!frames.length) return;
+
+    if (animationTimer !== null) return; // already playing
+
+    animationTimer = setInterval(() => {
+
+        Plotly.animate("plot", frames[animationIndex], {
+            frame: { duration: 0, redraw: true },
+            transition: { duration: 0 }
+        });
+
+        animationIndex++;
+
+        if (animationIndex >= frames.length) {
+            animationIndex = 0; // loop
+        }
+
+    }, 40);
+}
+
+function showError(message) {
+    const errorBox = document.getElementById("error-box");
+    errorBox.innerText = message;
+    errorBox.style.display = "block";
+
+    // Clear plot
+    Plotly.purge("plot");
+}
+
+function pauseAnimation() {
+
+    if (animationTimer !== null) {
+        clearInterval(animationTimer);
+        animationTimer = null;
+    }
+}
+
+
 async function runAnimation() {
+
+    // Clear previous error
+    const errorBox = document.getElementById("error-box");
+    errorBox.style.display = "none";
 
     const params = {
         L1: parseFloat(document.getElementById("L1").value),
         L2: parseFloat(document.getElementById("L2").value),
         L3: parseFloat(document.getElementById("L3").value),
-        L4: parseFloat(document.getElementById("L4").value)
+        L4: parseFloat(document.getElementById("L4").value),
+        driver: parseInt(document.getElementById("driver").value)
     };
 
     const response = await fetch("/solve", {
@@ -15,7 +81,32 @@ async function runAnimation() {
 
     const data = await response.json();
 
-    const frames = [];
+    if (!data.success) {
+        showError(data.error);
+        return;
+    }
+
+    if (data.change_point) {
+        showError("Change-point mechanism: singular toggle configuration detected. Motion may exhibit branch merging.");
+    }
+
+    console.log("Linkage Properties:", data.properties);
+
+    // Update UI
+    document.getElementById("input-type").innerText = data.properties["Input Type"];
+    document.getElementById("output-type").innerText = data.properties["Output Type"];
+    document.getElementById("linkage-type").innerText = data.properties["Linkage Type"];
+    document.getElementById("validity-index").innerText =
+        data.properties["Validity Index"] !== null
+            ? data.properties["Validity Index"].toFixed(2)
+            : "-";
+
+    document.getElementById("grashof-index").innerText =
+        data.properties["Grashof Index"].toFixed(4);
+
+
+    frames = [];
+    animationIndex = 0;
 
     // -----------------------------
     // Compute bounds for centering
@@ -118,20 +209,9 @@ async function runAnimation() {
         margin: { l: 40, r: 40, t: 20, b: 40 }
     });
 
-
     // -----------------------------
     // Animate continuously
     // -----------------------------
-    function animateLoop() {
-        Plotly.animate("plot", frames, {
-            frame: { duration: 40, redraw: true },
-            transition: { duration: 0 },
-            mode: "afterall"
-        }).then(() => {
-            animateLoop();  // restart animation
-        });
-    }
 
-    animateLoop();
 
 }

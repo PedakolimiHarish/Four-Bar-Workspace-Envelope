@@ -1,8 +1,7 @@
 """
 geometry.py
 
-This module converts four-bar linkage angles into
-actual 2D Cartesian positions.
+This module converts four-bar linkage angles into actual 2D Cartesian positions.
 
 It contains ONLY geometry.
 - No solvers
@@ -26,7 +25,7 @@ import numpy as np
 # --------------------------------------------------
 # Compute joint positions for ONE configuration
 # --------------------------------------------------
-def joint_positions(theta2, theta3, L1, L2, L3):
+def joint_positions(theta2, theta3, theta4, L1, L2, L3, L4):
     """
     Computes positions of all joints for a single time step.
 
@@ -38,6 +37,9 @@ def joint_positions(theta2, theta3, L1, L2, L3):
     theta3 : float
         Coupler link angle (radians)
 
+    theta4 : float
+        Output link angle (radians)
+
     L1 : float
         Length of fixed (ground) link
 
@@ -47,6 +49,9 @@ def joint_positions(theta2, theta3, L1, L2, L3):
     L3 : float
         Length of coupler link
 
+    L4 : float
+        Length of output link
+        
     Returns:
     -------
     A, B, C, D : numpy.ndarray
@@ -78,126 +83,94 @@ def joint_positions(theta2, theta3, L1, L2, L3):
         L2 * np.sin(theta2)
     ])
 
-    # -------------------------------
-    # Coupler link (B -> C)
-    # -------------------------------
+     # --------------------------------
+    # Output link (D → C)
+    # --------------------------------
 
-    # Coupler link extends from joint B
-    # Orientation given by theta3
-    C = B + np.array([
-        L3 * np.cos(theta3),
-        L3 * np.sin(theta3)
+    # Instead of computing C from B using theta3,
+    # we compute C from D using theta4.
+    # This ensures correct output rotation behavior.
+    C = D + np.array([
+        L4 * np.cos(theta4),
+        L4 * np.sin(theta4)
     ])
 
     return A, B, C, D
 
 
 # --------------------------------------------------
-# Compute an arbitrary point on the coupler link
+# Compute a point on the coupler link
 # --------------------------------------------------
-def coupler_point(B, theta3, r, phi=0.0):
+def coupler_point(B, C, ratio=1.0):
     """
-    Computes a point located on the coupler link.
+    Computes a point along the coupler link BC.
 
-    This is useful for workspace envelope calculation.
-
-    Parameters:
-    ----------
-    B : numpy.ndarray
-        Position of joint B (input-coupler joint)
-
-    theta3 : float
-        Coupler angle (radians)
-
-    r : float
-        Distance from joint B along the coupler link
-
-    phi : float, optional
-        Angular offset from coupler link direction (radians)
-
-    Returns:
-    -------
-    P : numpy.ndarray
-        Cartesian coordinates of the coupler point
+    ratio = 1.0 → point at C
+    ratio = 0.5 → midpoint
+    ratio = 0.0 → point at B
     """
 
-    # Coupler point position relative to joint B
-    P = B + np.array([
-        r * np.cos(theta3 + phi),
-        r * np.sin(theta3 + phi)
-    ])
+    # Vector from B to C
+    BC = C - B
+
+    # Point along BC
+    P = B + ratio * BC
 
     return P
 
 
 # --------------------------------------------------
-# Compute geometry for the ENTIRE simulation
+# Compute geometry for entire simulation
 # --------------------------------------------------
-def compute_geometry(data, L1, L2, L3, coupler_ratio=1.0):
+def compute_geometry(data, L1, L2, L3, L4, coupler_ratio=1.0):
     """
     Converts angle arrays into joint position arrays.
-
-    This function is typically called once per simulation
-    after kinematic angles are computed.
 
     Parameters:
     ----------
     data : dict
-        Output dictionary from solver.py containing:
-        - data["theta2"]
-        - data["theta3"]
+        Contains theta2, theta3, theta4 arrays
 
-    L1, L2, L3 : float
-        Link lengths (ground, input, coupler)
+    L1, L2, L3, L4 : float
+        Link lengths
 
-    coupler_ratio : float, optional
-        Location of the coupler point as a fraction of L3
-        (1.0 -> point at joint C)
+    coupler_ratio : float
+        Location of point along BC (default = 1 → at C)
 
     Returns:
     -------
     geometry : dict
-        Dictionary containing position arrays:
-        - A : (N, 2)
-        - B : (N, 2)
-        - C : (N, 2)
-        - D : (N, 2)
-        - P : (N, 2)  coupler point
+        Contains arrays:
+        A, B, C, D, P
     """
 
-    # Lists are used first for efficiency,
-    # converted to NumPy arrays at the end
     A_list = []
     B_list = []
     C_list = []
     D_list = []
     P_list = []
 
-    # Loop over every time step
-    for theta2, theta3 in zip(data["theta2"], data["theta3"]):
+    for theta2, theta3, theta4 in zip(
+        data["theta2"],
+        data["theta3"],
+        data["theta4"]
+    ):
 
         # Compute joint positions
         A, B, C, D = joint_positions(
-            theta2, theta3, L1, L2, L3
+            theta2, theta3, theta4,
+            L1, L2, L3, L4
         )
 
-        # Compute coupler point position
-        # Default is at joint C
-        P = coupler_point(
-            B,
-            theta3,
-            r=coupler_ratio * L3,
-            phi=0.0
-        )
+        # Compute coupler point along BC
+        P = coupler_point(B, C, ratio=coupler_ratio)
 
-        # Store results
         A_list.append(A)
         B_list.append(B)
         C_list.append(C)
         D_list.append(D)
         P_list.append(P)
 
-    # Convert lists to NumPy arrays
     return {
         "A": np.array(A_list),
         "B": np.array(B_list),
@@ -205,3 +178,5 @@ def compute_geometry(data, L1, L2, L3, coupler_ratio=1.0):
         "D": np.array(D_list),
         "P": np.array(P_list),
     }
+
+

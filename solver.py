@@ -20,8 +20,6 @@ Output : Time-indexed arrays of link angles
 """
 
 import numpy as np
-from scipy.optimize import fsolve
-
 
 # --------------------------------------------------
 # Grashof condition check
@@ -56,7 +54,6 @@ def check_grashof(L1, L2, L3, L4):
     s, p, q, l = links
 
     return (s + l) <= (p + q)
-
 
 # --------------------------------------------------
 # Vector loop equations (nonlinear equations)
@@ -99,57 +96,130 @@ def four_bar_equations(vars, theta2, L1, L2, L3, L4):
     # fsolve expects equations in the form f(x) = 0
     return [eq1, eq2]
 
-
 # --------------------------------------------------
 # Solve four-bar linkage for ONE input angle
 # --------------------------------------------------
-def solve_four_bar(theta2, L1, L2, L3, L4, prev_solution=None):
+def solve_four_bar(theta2, L1, L2, L3, L4, prev_theta4=None):
     """
-    Solves the four-bar linkage for a single input angle.
+    Solves the four-bar linkage for a single input angle
+    using exact geometric construction (law of cosines).
+    
+    Unified geometric solver using circle-circle intersection.
 
-    Uses numerical root finding (fsolve).
+    Works for:
+    - General four-bar
+    - Parallelogram
+    - Change-point
+    - Crank-rocker
+    - Rocker-crank
+    - Double crank
 
-    Parameters:
-    ----------
-    theta2 : float
-        Input crank angle (radians)
-
-    prev_solution : list or None
-        Previous [theta3, theta4] solution
-        Used to maintain branch consistency
-
-    Returns:
-    -------
-    theta3, theta4 : float
-        Coupler and output angles (radians)
+    No special-case logic required.
+    
+    This implementation:
+    - Computes both algebraic assembly solutions
+    - Preserves physical continuity
+    - Detects toggle (singularity)
+    - Switches branch only when physically required
     """
 
-    # Initial guess strategy
-    if prev_solution is None:
-        # First step: use input angle as rough guess
-        guess = [theta2, theta2]
+    # -----------------------------
+    # Step 1: Compute point B
+    # -----------------------------
+    Bx = L2 * np.cos(theta2)
+    By = L2 * np.sin(theta2)
+
+    # Ground point D
+    Dx = L1
+    Dy = 0.0
+
+    # -----------------------------
+    # Step 2: Distance BD
+    # -----------------------------
+    dx = Dx - Bx
+    dy = Dy - By
+    d = np.sqrt(dx**2 + dy**2)
+
+    # Avoid numerical collapse
+    if d < 1e-12:
+        d = 1e-12
+
+    # -----------------------------
+    # Step 3: Check circle intersection feasibility
+    # -----------------------------
+    if d > (L3 + L4) or d < abs(L3 - L4):
+        raise RuntimeError("No real assembly for this theta2")
+
+    # -----------------------------
+    # Step 4: Compute intersection
+    # -----------------------------
+    a = (L3**2 - L4**2 + d**2) / (2*d)
+    h_sq = L3**2 - a**2
+    h_sq = max(h_sq, 0.0)  # avoid negative due to float error
+    h = np.sqrt(h_sq)
+
+    # Base point along BD
+    xm = Bx + a * dx / d
+    ym = By + a * dy / d
+
+    # Two possible C points
+    rx = -dy * (h/d)
+    ry =  dx * (h/d)
+
+    C1x = xm + rx
+    C1y = ym + ry
+
+    C2x = xm - rx
+    C2y = ym - ry
+    
+    # Convert intersection points into theta4 candidates
+    theta4_sol1 = np.arctan2(C1y - Dy, C1x - Dx)
+    theta4_sol2 = np.arctan2(C2y - Dy, C2x - Dx)
+
+    # -----------------------------
+    # Step 5: Choose assembly branch (continuous + unwrap-safe)
+    # -----------------------------
+    if prev_theta4 is None:
+        theta4 = theta4_sol1
     else:
-        # Subsequent steps: use previous solution
-        # This prevents jumping between open/crossed configurations
-        guess = prev_solution
+        theta4 = theta4_sol1  # always choose same algebraic branch
+        def unwrap_relative(angle, reference):
+            diff = angle - reference
+            return reference + np.arctan2(np.sin(diff), np.cos(diff))
 
-    # Call nonlinear solver
-    solution, info, ier, msg = fsolve(
-        four_bar_equations,
-        guess,
-        args=(theta2, L1, L2, L3, L4),
-        full_output=True,
-        maxfev=200
-    )
+        sol1 = unwrap_relative(theta4_sol1, prev_theta4)
+        sol2 = unwrap_relative(theta4_sol2, prev_theta4)
 
-    # Check convergence
-    if ier != 1:
-        # Solver failed (usually near singular positions)
-        raise RuntimeError("Four-bar solver did not converge")
+        d1 = abs(sol1 - prev_theta4)
+        d2 = abs(sol2 - prev_theta4)
 
-    # Return solved angles
-    return solution[0], solution[1]
+        theta4 = sol1 if d1 < d2 else sol2
 
+    # -----------------------------
+    # Step 6: Compute theta3
+    # -----------------------------
+    Cx = Dx + L4 * np.cos(theta4)
+    Cy = Dy + L4 * np.sin(theta4)
+
+    theta3 = np.arctan2(Cy - By, Cx - Bx)
+
+    return theta3, theta4
+
+
+def compute_theta2_limits(L1, L2, L3, L4):
+
+    # Toggle when L3 and L4 align
+    term1 = (L1**2 + L2**2 - (L3 + L4)**2) / (2 * L1 * L2)
+    term2 = (L1**2 + L2**2 - (L3 - L4)**2) / (2 * L1 * L2)
+
+    # Clip numerical noise
+    term1 = np.clip(term1, -1.0, 1.0)
+    term2 = np.clip(term2, -1.0, 1.0)
+
+    theta1 = np.arccos(term1)
+    theta2 = np.arccos(term2)
+
+    return min(theta1, theta2), max(theta1, theta2)
 
 # --------------------------------------------------
 # Main kinematic sweep (entire simulation)
@@ -191,6 +261,21 @@ def compute_four_bar(
     if not check_grashof(L1, L2, L3, L4):
         raise ValueError("Grashof condition not satisfied")
 
+    # --------------------------------------------------
+    # Detect change-point (singular) mechanism
+    # --------------------------------------------------
+
+    links = sorted([L1, L2, L3, L4])
+    s, p, q, l = links
+
+    grashof_index = (p + q) - (s + l)
+
+    is_change_point = abs(grashof_index) < 1e-8
+
+    if is_change_point:
+        print("WARNING: Change-point mechanism detected.")
+
+        
     # Convert step size to radians
     step = np.deg2rad(step_deg)
 
@@ -206,51 +291,130 @@ def compute_four_bar(
     theta3_vals = []
     theta4_vals = []
 
-    # For branch continuity
-    prev_solution = None
+    # ----------------------------------------
+    # Determine motion type of driver (L2)
+    # ----------------------------------------
 
-    # Start slightly away from zero to avoid toggle singularity
-    theta2 = 1e-3
+    links = [L1, L2, L3, L4]
+    s = min(links)
+    l = max(links)
+
+    # remaining two
+    temp = links.copy()
+    temp.remove(s)
+    temp.remove(l)
+    p, q = temp
+
+    grashof = (s + l) <= (p + q)
+
+    # Input is crank ONLY if:
+    # 1) Grashof mechanism
+    # 2) Driver (L2) is shortest link
+
+    if not grashof:
+        input_is_crank = False
+    else:
+        if abs(L1 - s) < 1e-6:
+            # shortest is ground → double crank
+            input_is_crank = True
+        elif abs(L2 - s) < 1e-6:
+            # shortest is driver → crank-rocker
+            input_is_crank = True
+        else:
+            input_is_crank = False
+
+
+    # ----------------------------------------
+    # Set theta2 limits
+    # ----------------------------------------
+    if input_is_crank:
+        theta2_min = 0.0
+        theta2_max = 2.0 * np.pi
+    else:
+        theta_a, theta_b = compute_theta2_limits(L1, L2, L3, L4)
+        theta2_min = min(theta_a, theta_b)
+        theta2_max = max(theta_a, theta_b)
+
     t = 0.0
+    # Initialize continuity variable
+    prev_theta4 = None
 
-    # Sweep input crank angle for one full revolution
-    while theta2 <= 2.0 * np.pi:
+    # -----------------------------------------
+    # Forward sweep
+    # -----------------------------------------
+    theta2 = theta2_min + 1e-4
+
+    while theta2 <= theta2_max:
 
         try:
-            # Solve for coupler and output angles
             theta3, theta4 = solve_four_bar(
-                theta2, L1, L2, L3, L4, prev_solution
+                theta2,
+                L1, L2, L3, L4,
+                prev_theta4
             )
 
-            # Store solution for next iteration
-            prev_solution = [theta3, theta4]
+            prev_theta4 = theta4
 
         except RuntimeError:
-            # Solver failed (singular position)
-            # Skip this step safely
-            theta2 += step
-            t += dt
-            continue
+            break
 
-        # Store results
         time_vals.append(t)
         theta2_vals.append(theta2)
         theta3_vals.append(theta3)
         theta4_vals.append(theta4)
 
-        # Increment input angle and time
         theta2 += step
         t += dt
 
-    # Convert lists to NumPy arrays
+    # -----------------------------------------
+    # Backward sweep (rocker only)
+    # -----------------------------------------
+    if not input_is_crank:
+
+        theta2 = theta2_max - step
+
+        while theta2 >= theta2_min:
+
+            try:
+                theta3, theta4 = solve_four_bar(
+                    theta2,
+                    L1, L2, L3, L4,
+                    prev_theta4
+                )
+
+                prev_theta4 = theta4
+
+            except RuntimeError:
+                break
+
+            time_vals.append(t)
+            theta2_vals.append(theta2)
+            theta3_vals.append(theta3)
+            theta4_vals.append(theta4)
+
+            theta2 -= step
+            t += dt
+
+    # -----------------------------------------
+    # Convert and unwrap
+    # -----------------------------------------
+    theta2_array = np.array(theta2_vals)
+    theta3_array = np.array(theta3_vals)
+    theta4_array = np.unwrap(np.array(theta4_vals))
+
+    print("theta4 min/max:", theta4_array.min(), theta4_array.max())
+    print("theta4 total rotation:", theta4_array[-1] - theta4_array[0])
+    print("Shortest link:", s)
+    print("Input is crank:", input_is_crank)
+
     return {
         "time": np.array(time_vals),
-        "theta2": np.array(theta2_vals),
-        "theta3": np.array(theta3_vals),
-        "theta4": np.array(theta4_vals),
+        "theta2": theta2_array,
+        "theta3": theta3_array,
+        "theta4": theta4_array,
+        "is_change_point": is_change_point
     }
-
-
+    
 # --------------------------------------------------
 # Standalone test (for debugging and learning)
 # --------------------------------------------------
@@ -260,7 +424,7 @@ if __name__ == "__main__":
     It is useful for quick validation without web integration.
     """
 
-    data = compute_four_bar(
+    """ data = compute_four_bar(
         L1=1.0,
         L2=0.3,
         L3=0.9,
@@ -273,4 +437,4 @@ if __name__ == "__main__":
     print(
         "Input angle range (deg):",
         np.rad2deg([data["theta2"][0], data["theta2"][-1]])
-    )
+    ) """
