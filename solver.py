@@ -100,111 +100,51 @@ def four_bar_equations(vars, theta2, L1, L2, L3, L4):
 # Solve four-bar linkage for ONE input angle
 # --------------------------------------------------
 def solve_four_bar(theta2, L1, L2, L3, L4, prev_theta4=None):
-    """
-    Solves the four-bar linkage for a single input angle
-    using exact geometric construction (law of cosines).
-    
-    Unified geometric solver using circle-circle intersection.
+    # newton-raphson method for solving nonlinear equations
 
-    Works for:
-    - General four-bar
-    - Parallelogram
-    - Change-point
-    - Crank-rocker
-    - Rocker-crank
-    - Double crank
+    k1 = L1 / L2
+    k2 = L1 / L4
+    k3 = (L1**2 + L2**2 - L3**2 + L4**2) / (2 * L2 * L4)
 
-    No special-case logic required.
-    
-    This implementation:
-    - Computes both algebraic assembly solutions
-    - Preserves physical continuity
-    - Detects toggle (singularity)
-    - Switches branch only when physically required
-    """
+    if abs(L1-L3) < 1e-9 and abs(L2-L4) < 1e-9:
+        theta4 = theta2
+        
+    theta4 = theta2 if prev_theta4 is None else prev_theta4
 
-    # -----------------------------
-    # Step 1: Compute point B
-    # -----------------------------
-    Bx = L2 * np.cos(theta2)
-    By = L2 * np.sin(theta2)
+    tol = 1e-10
+    max_iter = 50
 
-    # Ground point D
-    Dx = L1
-    Dy = 0.0
+    for _ in range(max_iter):
 
-    # -----------------------------
-    # Step 2: Distance BD
-    # -----------------------------
-    dx = Dx - Bx
-    dy = Dy - By
-    d = np.sqrt(dx**2 + dy**2)
+        f = (
+            k1 * np.cos(theta4)
+            - k2 * np.cos(theta2)
+            + k3
+            - np.cos(theta4 - theta2)
+        )
 
-    # Avoid numerical collapse
-    if d < 1e-12:
-        d = 1e-12
+        df = (
+            -k1 * np.sin(theta4)
+            + np.sin(theta4 - theta2)
+        )
 
-    # -----------------------------
-    # Step 3: Check circle intersection feasibility
-    # -----------------------------
-    if d > (L3 + L4) or d < abs(L3 - L4):
-        raise RuntimeError("No real assembly for this theta2")
+        if abs(df) < 1e-12:
+            break
 
-    # -----------------------------
-    # Step 4: Compute intersection
-    # -----------------------------
-    a = (L3**2 - L4**2 + d**2) / (2*d)
-    h_sq = L3**2 - a**2
-    h_sq = max(h_sq, 0.0)  # avoid negative due to float error
-    h = np.sqrt(h_sq)
+        theta4_new = theta4 - f / df
 
-    # Base point along BD
-    xm = Bx + a * dx / d
-    ym = By + a * dy / d
+        if abs(theta4_new - theta4) < tol:
+            theta4 = theta4_new
+            break
 
-    # Two possible C points
-    rx = -dy * (h/d)
-    ry =  dx * (h/d)
+        theta4 = theta4_new
 
-    C1x = xm + rx
-    C1y = ym + ry
+    x = L1 + L4*np.cos(theta4) - L2*np.cos(theta2)
+    y = L4*np.sin(theta4) - L2*np.sin(theta2)
 
-    C2x = xm - rx
-    C2y = ym - ry
-    
-    # Convert intersection points into theta4 candidates
-    theta4_sol1 = np.arctan2(C1y - Dy, C1x - Dx)
-    theta4_sol2 = np.arctan2(C2y - Dy, C2x - Dx)
-
-    # -----------------------------
-    # Step 5: Choose assembly branch (continuous + unwrap-safe)
-    # -----------------------------
-    if prev_theta4 is None:
-        theta4 = theta4_sol1
-    else:
-        theta4 = theta4_sol1  # always choose same algebraic branch
-        def unwrap_relative(angle, reference):
-            diff = angle - reference
-            return reference + np.arctan2(np.sin(diff), np.cos(diff))
-
-        sol1 = unwrap_relative(theta4_sol1, prev_theta4)
-        sol2 = unwrap_relative(theta4_sol2, prev_theta4)
-
-        d1 = abs(sol1 - prev_theta4)
-        d2 = abs(sol2 - prev_theta4)
-
-        theta4 = sol1 if d1 < d2 else sol2
-
-    # -----------------------------
-    # Step 6: Compute theta3
-    # -----------------------------
-    Cx = Dx + L4 * np.cos(theta4)
-    Cy = Dy + L4 * np.sin(theta4)
-
-    theta3 = np.arctan2(Cy - By, Cx - Bx)
+    theta3 = np.arctan2(y, x)
 
     return theta3, theta4
-
 
 def compute_theta2_limits(L1, L2, L3, L4):
 
@@ -314,15 +254,7 @@ def compute_four_bar(
     if not grashof:
         input_is_crank = False
     else:
-        if abs(L1 - s) < 1e-6:
-            # shortest is ground → double crank
-            input_is_crank = True
-        elif abs(L2 - s) < 1e-6:
-            # shortest is driver → crank-rocker
-            input_is_crank = True
-        else:
-            input_is_crank = False
-
+        input_is_crank = abs(L2 - s) < 1e-6 or abs(L1 - s) < 1e-6
 
     # ----------------------------------------
     # Set theta2 limits
@@ -353,6 +285,7 @@ def compute_four_bar(
                 prev_theta4
             )
 
+            #theta4 = np.arctan2(np.sin(theta4), np.cos(theta4))
             prev_theta4 = theta4
 
         except RuntimeError:
@@ -369,7 +302,7 @@ def compute_four_bar(
     # -----------------------------------------
     # Backward sweep (rocker only)
     # -----------------------------------------
-    if not input_is_crank:
+    """ if not input_is_crank:
 
         theta2 = theta2_max - step
 
@@ -382,6 +315,7 @@ def compute_four_bar(
                     prev_theta4
                 )
 
+                #theta4 = np.arctan2(np.sin(theta4), np.cos(theta4))
                 prev_theta4 = theta4
 
             except RuntimeError:
@@ -393,15 +327,17 @@ def compute_four_bar(
             theta4_vals.append(theta4)
 
             theta2 -= step
-            t += dt
+            t += dt """
 
     # -----------------------------------------
     # Convert and unwrap
     # -----------------------------------------
     theta2_array = np.array(theta2_vals)
     theta3_array = np.array(theta3_vals)
-    theta4_array = np.unwrap(np.array(theta4_vals))
+    # theta4_array = np.unwrap(np.array(theta4_vals))
+    theta4_array = np.array(theta4_vals)
 
+    print("L1, L2, L3, L4:", L1, L2, L3, L4)
     print("theta4 min/max:", theta4_array.min(), theta4_array.max())
     print("theta4 total rotation:", theta4_array[-1] - theta4_array[0])
     print("Shortest link:", s)

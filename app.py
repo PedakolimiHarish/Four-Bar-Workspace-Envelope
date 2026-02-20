@@ -60,7 +60,6 @@ def solve():
         # -----------------------------
         geom = compute_geometry(data, L1_int, L2_int, L3_int, L4_int)
 
-
         # -----------------------------
         # Kinematics
         # -----------------------------
