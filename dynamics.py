@@ -12,7 +12,6 @@ This is purely kinematic:
 Input  : Position arrays (x, y) and time array
 Output : Velocity (vx, vy) and acceleration (ax, ay)
 
-This module is OS-independent and safe on Windows 11.
 """
 
 import numpy as np

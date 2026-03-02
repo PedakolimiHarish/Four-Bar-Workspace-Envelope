@@ -302,7 +302,7 @@ def compute_four_bar(
     # -----------------------------------------
     # Backward sweep (rocker only)
     # -----------------------------------------
-    """ if not input_is_crank:
+    if not input_is_crank:
 
         theta2 = theta2_max - step
 
@@ -327,7 +327,7 @@ def compute_four_bar(
             theta4_vals.append(theta4)
 
             theta2 -= step
-            t += dt """
+            t += dt
 
     # -----------------------------------------
     # Convert and unwrap

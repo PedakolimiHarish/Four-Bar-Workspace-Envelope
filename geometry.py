@@ -21,7 +21,6 @@ Coordinate System:
 
 import numpy as np
 
-
 # --------------------------------------------------
 # Compute joint positions for ONE configuration
 # --------------------------------------------------
@@ -97,7 +96,6 @@ def joint_positions(theta2, theta3, theta4, L1, L2, L3, L4):
 
     return A, B, C, D
 
-
 # --------------------------------------------------
 # Compute a point on the coupler link
 # --------------------------------------------------
@@ -117,7 +115,6 @@ def coupler_point(B, C, ratio=1.0):
     P = B + ratio * BC
 
     return P
-
 
 # --------------------------------------------------
 # Compute geometry for entire simulation
@@ -178,5 +175,3 @@ def compute_geometry(data, L1, L2, L3, L4, coupler_ratio=1.0):
         "D": np.array(D_list),
         "P": np.array(P_list),
     }
-
-
