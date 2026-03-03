@@ -100,6 +100,13 @@ def four_bar_equations(vars, theta2, L1, L2, L3, L4):
 # Solve four-bar linkage for ONE input angle
 # --------------------------------------------------
 def solve_four_bar(theta2, L1, L2, L3, L4, prev_theta4=None):
+    
+    # --- Parallelogram special case ---
+    if abs(L1 - L3) < 1e-9 and abs(L2 - L4) < 1e-9:
+        theta4 = theta2
+        theta3 = theta2
+        return theta3, theta4
+    
     # newton-raphson method for solving nonlinear equations
 
     k1 = L1 / L2
@@ -147,20 +154,22 @@ def solve_four_bar(theta2, L1, L2, L3, L4, prev_theta4=None):
     return theta3, theta4
 
 def compute_theta2_limits(L1, L2, L3, L4):
+    
+    if max(L1, L2, L3, L4) > (L1 + L2 + L3 + L4 - max(L1, L2, L3, L4)):
+        raise ValueError("Invalid linkage: cannot form closed four-bar chain.")
 
-    # Toggle when L3 and L4 align
     term1 = (L1**2 + L2**2 - (L3 + L4)**2) / (2 * L1 * L2)
     term2 = (L1**2 + L2**2 - (L3 - L4)**2) / (2 * L1 * L2)
 
-    # Clip numerical noise
     term1 = np.clip(term1, -1.0, 1.0)
     term2 = np.clip(term2, -1.0, 1.0)
 
     theta1 = np.arccos(term1)
     theta2 = np.arccos(term2)
 
-    return min(theta1, theta2), max(theta1, theta2)
+    theta_limit = max(theta1, theta2)
 
+    return -theta_limit, +theta_limit
 # --------------------------------------------------
 # Main kinematic sweep (entire simulation)
 # --------------------------------------------------
@@ -196,10 +205,6 @@ def compute_four_bar(
         - theta3
         - theta4
     """
-
-    # Validate mechanism type
-    if not check_grashof(L1, L2, L3, L4):
-        raise ValueError("Grashof condition not satisfied")
 
     # --------------------------------------------------
     # Detect change-point (singular) mechanism

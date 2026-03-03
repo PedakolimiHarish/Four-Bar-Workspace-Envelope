@@ -1,60 +1,99 @@
-def compute_linkage_properties(L1, L2, L3, L4, valid_steps=None, total_steps=None):
+def compute_linkage_properties(L1, L2, L3, L4):
 
     tol = 1e-6
-
     links = [L1, L2, L3, L4]
+
+    # ----------------------------------
+    # 1️⃣ Assembly Validity Check
+    # ----------------------------------
+    if max(links) > sum(links) - max(links):
+        return {
+            "Assembly": "Invalid",
+            "Grashof Class": "-",
+            "Mechanism Type": "Cannot Assemble",
+            "Input Type": "-",
+            "Output Type": "-"
+        }
+
+    # ----------------------------------
+    # 2️⃣ Special Symmetry Cases
+    # ----------------------------------
+    special = None
+
+    if abs(L1 - L3) < tol and abs(L2 - L4) < tol:
+        special = "Parallelogram"
+
+    elif abs(L1 - L2) < tol and abs(L3 - L4) < tol:
+        special = "Kite Linkage"
+
+    elif abs(L1 - L4) < tol and abs(L2 - L3) < tol:
+        special = "Rhomboid (Galloway)"
+
+    # ----------------------------------
+    # 3️⃣ Grashof Classification
+    # ----------------------------------
     s = min(links)
     l = max(links)
 
-    # remaining two
     temp = links.copy()
     temp.remove(s)
     temp.remove(l)
     p, q = temp
 
-    grashof_index = (p + q) - (s + l)
+    GI = (p + q) - (s + l)
 
-    if grashof_index > tol:
-        linkage_type = "Grashof"
-    elif abs(grashof_index) <= tol:
-        linkage_type = "Change-Point"
+    if GI > tol:
+        grashof_class = "Grashof"
+    elif GI < -tol:
+        grashof_class = "Non-Grashof"
     else:
-        linkage_type = "Non-Grashof"
+        grashof_class = "Change-Point"
 
-    if linkage_type == "Grashof":
+    # ----------------------------------
+    # 4️⃣ Mechanism Type
+    # ----------------------------------
+    mechanism = "-"
+    input_type = "-"
+    output_type = "-"
 
+    if special:
+        mechanism = special
+        input_type = "Crank"
+        output_type = "Crank"
+
+    elif grashof_class == "Non-Grashof":
+        mechanism = "Double Rocker"
+        input_type = "Rocker"
+        output_type = "Rocker"
+
+    else:
         if abs(L1 - s) < tol:
-            # Ground shortest → Double crank
+            mechanism = "Double Crank"
             input_type = "Crank"
             output_type = "Crank"
 
         elif abs(L2 - s) < tol:
+            mechanism = "Crank-Rocker"
             input_type = "Crank"
             output_type = "Rocker"
 
         elif abs(L4 - s) < tol:
+            mechanism = "Rocker-Crank"
             input_type = "Rocker"
             output_type = "Crank"
 
         else:
+            mechanism = "Double Rocker"
             input_type = "Rocker"
             output_type = "Rocker"
 
-    else:
-        input_type = "Rocker"
-        output_type = "Rocker"
-
-
-
-    # Validity index
-    validity_index = None
-    if valid_steps is not None and total_steps is not None:
-        validity_index = (valid_steps / total_steps) * 100
+        if grashof_class == "Change-Point":
+            mechanism += " (Change-Point)"
 
     return {
-        "Linkage Type": linkage_type,
+        "Assembly": "Valid",
+        "Grashof Class": grashof_class,
+        "Mechanism Type": mechanism,
         "Input Type": input_type,
-        "Output Type": output_type,
-        "Grashof Index": round(grashof_index, 4),
-        "Validity Index": round(validity_index, 2) if validity_index else None
+        "Output Type": output_type
     }

@@ -3,22 +3,6 @@ let animationIndex = 0;
 let animationTimer = null;
 
 
-
-
-function resetAnimation() {
-
-    pauseAnimation();
-
-    animationIndex = 0;
-
-    if (frames.length) {
-        Plotly.animate("plot", frames[0], {
-            frame: { duration: 0, redraw: true },
-            transition: { duration: 0 }
-        });
-    }
-}
-
 function playAnimation() {
 
     if (!frames.length) return;
@@ -82,6 +66,12 @@ async function runAnimation() {
     const data = await response.json();
 
     if (!data.success) {
+
+        if (data.properties) {
+            document.getElementById("assembly").innerText =
+                data.properties["Assembly"] || "-";
+        }
+
         showError(data.error);
         return;
     }
@@ -93,18 +83,23 @@ async function runAnimation() {
     console.log("Linkage Properties:", data.properties);
 
     // Update UI
-    document.getElementById("input-type").innerText = data.properties["Input Type"];
-    document.getElementById("output-type").innerText = data.properties["Output Type"];
-    document.getElementById("linkage-type").innerText = data.properties["Linkage Type"];
-    document.getElementById("validity-index").innerText =
-        data.properties["Validity Index"] !== null
-            ? data.properties["Validity Index"].toFixed(2)
-            : "-";
+    if (data.properties) {
 
-    document.getElementById("grashof-index").innerText =
-        data.properties["Grashof Index"].toFixed(4);
+        document.getElementById("assembly").innerText =
+            data.properties["Assembly"] || "-";
 
+        document.getElementById("grashof-class").innerText =
+            data.properties["Grashof Class"] || "-";
 
+        document.getElementById("mechanism-type").innerText =
+            data.properties["Mechanism Type"] || "-";
+
+        document.getElementById("input-type").innerText =
+            data.properties["Input Type"] || "-";
+
+        document.getElementById("output-type").innerText =
+            data.properties["Output Type"] || "-";
+    }
     frames = [];
     animationIndex = 0;
 
@@ -208,10 +203,5 @@ async function runAnimation() {
         showlegend: false,
         margin: { l: 40, r: 40, t: 20, b: 40 }
     });
-
-    // -----------------------------
-    // Animate continuously
-    // -----------------------------
-
 
 }
