@@ -100,24 +100,13 @@ def four_bar_equations(vars, theta2, L1, L2, L3, L4):
 # Solve four-bar linkage for ONE input angle
 # --------------------------------------------------
 def solve_four_bar(theta2, L1, L2, L3, L4, prev_theta4=None):
-<<<<<<< HEAD
     
     # --- Parallelogram special case ---
-=======
-
-    # --------------------------------------------------
-    # PARALLELOGRAM SPECIAL CASE
-    # --------------------------------------------------
->>>>>>> 8eaf1b6326bde77d9cb372054d7e62411fc6a7a0
     if abs(L1 - L3) < 1e-9 and abs(L2 - L4) < 1e-9:
         theta4 = theta2
         theta3 = theta2
         return theta3, theta4
-<<<<<<< HEAD
     
-=======
-
->>>>>>> 8eaf1b6326bde77d9cb372054d7e62411fc6a7a0
     # newton-raphson method for solving nonlinear equations
 
     k1 = L1 / L2
