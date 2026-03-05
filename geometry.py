@@ -23,6 +23,10 @@ import numpy as np
 
 # --------------------------------------------------
 # Compute joint positions for ONE configuration
+
+# Convert link angles into Cartesian joint coordinates.
+# This defines the actual physical geometry of the mechanism.
+
 # --------------------------------------------------
 def joint_positions(theta2, theta3, theta4, L1, L2, L3, L4):
     """
@@ -98,6 +102,10 @@ def joint_positions(theta2, theta3, theta4, L1, L2, L3, L4):
 
 # --------------------------------------------------
 # Compute a point on the coupler link
+
+# Compute a point located along the coupler link BC.
+# Useful for tracking coupler curves or workspace envelopes.
+
 # --------------------------------------------------
 def coupler_point(B, C, ratio=1.0):
     """
@@ -118,6 +126,10 @@ def coupler_point(B, C, ratio=1.0):
 
 # --------------------------------------------------
 # Compute geometry for entire simulation
+
+# Convert the full set of link angles into arrays of joint positions.
+# This produces the geometry used for animation and plotting.
+
 # --------------------------------------------------
 def compute_geometry(data, L1, L2, L3, L4, coupler_ratio=1.0):
     """
