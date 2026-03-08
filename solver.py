@@ -3,274 +3,343 @@ solver.py
 
 This module performs the KINEMATIC ANALYSIS of a planar four-bar linkage.
 
-Responsibilities:
-- Check Grashof condition
-- Solve nonlinear vector-loop equations
-- Sweep input crank angle over one full revolution
-- Maintain branch consistency (open configuration)
-- Handle singular (toggle) positions safely
+The solver computes the motion of the mechanism by determining the
+link angles for each step of the simulation.
 
-This file DOES NOT:
-- Compute geometry (positions)
-- Plot anything
-- Handle web or UI logic
+Key responsibilities of this module:
 
-Input  : Link lengths + simulation parameters
-Output : Time-indexed arrays of link angles
+1. Solve the four-bar loop closure using the Freudenstein equation
+2. Use Newton–Raphson iteration to compute the output link angle
+3. Sweep the input angle through its allowable motion range
+4. Maintain configuration continuity using the previous solution
+5. Detect singular (change-point / toggle) mechanisms
+
+Important:
+This module works purely with link ANGLES.
+
+It does NOT:
+- compute joint positions
+- compute velocities or accelerations
+- plot or animate the mechanism
+- interact with the web interface
+
+Input:
+    Link lengths (L1, L2, L3, L4)
+    Simulation parameters (step size, RPM)
+
+Output:
+    Time-indexed arrays of link angles:
+        theta2  → input link
+        theta3  → coupler
+        theta4  → output link
 """
 
 import numpy as np
-from scipy.optimize import fsolve
-
-
-# --------------------------------------------------
-# Grashof condition check
-# --------------------------------------------------
-def check_grashof(L1, L2, L3, L4):
-    """
-    Checks whether the given four-bar linkage satisfies
-    the Grashof condition.
-
-    Grashof condition:
-        shortest + longest <= sum of other two
-
-    If true:
-        At least one link can rotate fully.
-
-    Parameters:
-    ----------
-    L1, L2, L3, L4 : float
-        Link lengths
-
-    Returns:
-    -------
-    bool
-        True  -> Grashof mechanism
-        False -> Non-Grashof (no full rotation)
-    """
-
-    # Sort link lengths from smallest to largest
-    links = sorted([L1, L2, L3, L4])
-
-    # Assign shortest, middle, and longest
-    s, p, q, l = links
-
-    return (s + l) <= (p + q)
-
-
-# --------------------------------------------------
-# Vector loop equations (nonlinear equations)
-# --------------------------------------------------
-def four_bar_equations(vars, theta2, L1, L2, L3, L4):
-    """
-    Defines the vector loop equations for the four-bar linkage.
-
-    Unknowns:
-        theta3 -> coupler angle
-        theta4 -> output link angle
-
-    Known:
-        theta2 -> input crank angle
-
-    These equations come from:
-        L2 + L3 = L1 + L4
-
-    resolved in X and Y directions.
-    """
-
-    # Unpack unknown variables
-    theta3, theta4 = vars
-
-    # X-direction loop equation
-    eq1 = (
-        L2 * np.cos(theta2)
-        + L3 * np.cos(theta3)
-        - L1
-        - L4 * np.cos(theta4)
-    )
-
-    # Y-direction loop equation
-    eq2 = (
-        L2 * np.sin(theta2)
-        + L3 * np.sin(theta3)
-        - L4 * np.sin(theta4)
-    )
-
-    # fsolve expects equations in the form f(x) = 0
-    return [eq1, eq2]
 
 
 # --------------------------------------------------
 # Solve four-bar linkage for ONE input angle
 # --------------------------------------------------
-def solve_four_bar(theta2, L1, L2, L3, L4, prev_solution=None):
-    """
-    Solves the four-bar linkage for a single input angle.
+#
+# This function computes the unknown angles of the
+# coupler (theta3) and output link (theta4) when
+# the input angle (theta2) is known.
+#
+# Instead of solving the full vector loop equations,
+# the solver uses the Freudenstein equation, which
+# eliminates theta3 and reduces the problem to a
+# single nonlinear equation in theta4.
+#
+# Newton–Raphson iteration is used to solve the
+# equation numerically.
+#
+# The previous solution of theta4 is used as the
+# initial guess to maintain branch continuity during
+# the simulation sweep.
+# --------------------------------------------------
 
-    Uses numerical root finding (fsolve).
+def solve_four_bar(theta2, L1, L2, L3, L4, prev_theta4=None):
 
-    Parameters:
-    ----------
-    theta2 : float
-        Input crank angle (radians)
+    # --------------------------------------------------
+    # Special case: Parallelogram linkage
+    #
+    # If opposite links are equal, the mechanism forms
+    # a parallelogram. In this case the input and output
+    # links remain parallel and their angles are equal.
+    #
+    # This configuration has an analytical solution.
+    # --------------------------------------------------
+    if abs(L1 - L3) < 1e-9 and abs(L2 - L4) < 1e-9:
+        theta4 = theta2
+        theta3 = theta2
+        return theta3, theta4
 
-    prev_solution : list or None
-        Previous [theta3, theta4] solution
-        Used to maintain branch consistency
+    # --------------------------------------------------
+    # Freudenstein equation constants
+    #
+    # The Freudenstein equation relates the input and
+    # output angles of a four-bar linkage:
+    #
+    # k1 cos(theta4) − k2 cos(theta2) + k3 − cos(theta4 − theta2) = 0
+    #
+    # These constants simplify the expression.
+    # --------------------------------------------------
+    k1 = L1 / L2
+    k2 = L1 / L4
+    k3 = (L1**2 + L2**2 - L3**2 + L4**2) / (2 * L2 * L4)
 
-    Returns:
-    -------
-    theta3, theta4 : float
-        Coupler and output angles (radians)
-    """
+    # --------------------------------------------------
+    # Initial guess for Newton iteration
+    #
+    # If this is the first step, use theta2 as the guess.
+    # Otherwise use the previous solution to maintain
+    # configuration continuity (continuation method).
+    # --------------------------------------------------
+    theta4 = theta2 if prev_theta4 is None else prev_theta4
 
-    # Initial guess strategy
-    if prev_solution is None:
-        # First step: use input angle as rough guess
-        guess = [theta2, theta2]
-    else:
-        # Subsequent steps: use previous solution
-        # This prevents jumping between open/crossed configurations
-        guess = prev_solution
+    tol = 1e-10       # convergence tolerance
+    max_iter = 50     # maximum Newton iterations
 
-    # Call nonlinear solver
-    solution, info, ier, msg = fsolve(
-        four_bar_equations,
-        guess,
-        args=(theta2, L1, L2, L3, L4),
-        full_output=True,
-        maxfev=200
-    )
+    # --------------------------------------------------
+    # Newton–Raphson iteration
+    #
+    # θ_new = θ − f(θ) / f'(θ)
+    #
+    # Iteratively improves the estimate of theta4
+    # until the solution converges.
+    # --------------------------------------------------
+    for _ in range(max_iter):
 
-    # Check convergence
-    if ier != 1:
-        # Solver failed (usually near singular positions)
-        raise RuntimeError("Four-bar solver did not converge")
+        # Freudenstein equation
+        f = (
+            k1 * np.cos(theta4)
+            - k2 * np.cos(theta2)
+            + k3
+            - np.cos(theta4 - theta2)
+        )
 
-    # Return solved angles
-    return solution[0], solution[1]
+        # Derivative of Freudenstein equation
+        df = (
+            -k1 * np.sin(theta4)
+            + np.sin(theta4 - theta2)
+        )
+
+        # Avoid division by zero near singularity
+        if abs(df) < 1e-12:
+            break
+
+        # Newton update step
+        theta4_new = theta4 - f / df
+
+        # Check convergence
+        if abs(theta4_new - theta4) < tol:
+            theta4 = theta4_new
+            break
+
+        theta4 = theta4_new
+
+    # --------------------------------------------------
+    # Compute coupler angle (theta3)
+    #
+    # Once theta4 is known, theta3 can be obtained
+    # geometrically from the loop equation.
+    #
+    # Vector form:
+    # L2 + L3 = L1 + L4
+    # --------------------------------------------------
+    x = L1 + L4*np.cos(theta4) - L2*np.cos(theta2)
+    y = L4*np.sin(theta4) - L2*np.sin(theta2)
+
+    theta3 = np.arctan2(y, x)
+
+    return theta3, theta4
 
 
 # --------------------------------------------------
-# Main kinematic sweep (entire simulation)
+# Compute allowable input angle limits
 # --------------------------------------------------
-def compute_four_bar(
-    L1,
-    L2,
-    L3,
-    L4,
-    step_deg=2.0,
-    rpm=30.0
-):
-    """
-    Computes the full kinematic motion of the four-bar linkage
-    over one complete input crank revolution.
+#
+# Non-Grashof mechanisms cannot rotate fully.
+# Their motion is limited by toggle configurations
+# where three joints become collinear.
+#
+# These limits are determined using the law of
+# cosines applied to the four-bar geometry.
+# --------------------------------------------------
 
-    Parameters:
-    ----------
-    L1, L2, L3, L4 : float
-        Link lengths
+def compute_theta2_limits(L1, L2, L3, L4):
 
-    step_deg : float
-        Input angle step size (degrees)
+    # --------------------------------------------------
+    # Assembly validity check
+    #
+    # A four-bar linkage cannot exist if the largest
+    # link is longer than the sum of the other three.
+    # --------------------------------------------------
+    if max(L1, L2, L3, L4) > (L1 + L2 + L3 + L4 - max(L1, L2, L3, L4)):
+        raise ValueError("Invalid linkage: cannot form closed four-bar chain.")
 
-    rpm : float
-        Input crank speed (revolutions per minute)
+    # --------------------------------------------------
+    # Compute toggle positions using law of cosines
+    # --------------------------------------------------
+    term1 = (L1**2 + L2**2 - (L3 + L4)**2) / (2 * L1 * L2)
+    term2 = (L1**2 + L2**2 - (L3 - L4)**2) / (2 * L1 * L2)
 
-    Returns:
-    -------
-    data : dict
-        Dictionary containing NumPy arrays:
-        - time
-        - theta2
-        - theta3
-        - theta4
-    """
+    # Clip to valid acos range
+    term1 = np.clip(term1, -1.0, 1.0)
+    term2 = np.clip(term2, -1.0, 1.0)
 
-    # Validate mechanism type
-    if not check_grashof(L1, L2, L3, L4):
-        raise ValueError("Grashof condition not satisfied")
+    theta1 = np.arccos(term1)
+    theta2 = np.arccos(term2)
 
-    # Convert step size to radians
-    step = np.deg2rad(step_deg)
+    theta_limit = max(theta1, theta2)
 
-    # Convert RPM to angular velocity (rad/s)
-    omega = rpm * 2.0 * np.pi / 60.0
+    return -theta_limit, +theta_limit
 
-    # Time step corresponding to angular step
-    dt = step / omega
 
-    # Storage lists (converted to arrays later)
+# --------------------------------------------------
+# Main simulation routine
+# --------------------------------------------------
+#
+# Performs a full kinematic simulation of the
+# four-bar linkage.
+#
+# Steps:
+# 1) Detect change-point mechanism
+# 2) Determine allowable input motion
+# 3) Sweep the input angle
+# 4) Solve linkage configuration each step
+# 5) Store time and angle history
+# --------------------------------------------------
+
+def compute_four_bar(L1, L2, L3, L4, step_deg=2.0, rpm=30.0):
+
+    # --------------------------------------------------
+    # Detect change-point mechanism
+    #
+    # Occurs when:
+    # shortest + longest = other two
+    #
+    # At this condition the mechanism passes through
+    # a singular configuration where branches merge.
+    # --------------------------------------------------
+    links = sorted([L1, L2, L3, L4])
+    s, p, q, l = links
+
+    grashof_index = (p + q) - (s + l)
+
+    is_change_point = abs(grashof_index) < 1e-8
+
+    if is_change_point:
+        print("WARNING: Change-point mechanism detected.")
+
+    # --------------------------------------------------
+    # Convert simulation parameters
+    # --------------------------------------------------
+    step = np.deg2rad(step_deg)             # input step size
+    omega = rpm * 2.0 * np.pi / 60.0        # rad/s
+    dt = step / omega                       # time step
+
+    # Storage arrays
     time_vals = []
     theta2_vals = []
     theta3_vals = []
     theta4_vals = []
 
-    # For branch continuity
-    prev_solution = None
+    # --------------------------------------------------
+    # Determine if input link is a crank
+    # --------------------------------------------------
+    links = [L1, L2, L3, L4]
 
-    # Start slightly away from zero to avoid toggle singularity
-    theta2 = 1e-3
+    s = min(links)
+    l = max(links)
+
+    temp = links.copy()
+    temp.remove(s)
+    temp.remove(l)
+    p, q = temp
+
+    grashof = (s + l) <= (p + q)
+
+    if not grashof:
+        input_is_crank = False
+    else:
+        input_is_crank = abs(L2 - s) < 1e-6 or abs(L1 - s) < 1e-6
+
+    # --------------------------------------------------
+    # Set input motion limits
+    # --------------------------------------------------
+    if input_is_crank:
+        theta2_min = 0.0
+        theta2_max = 2.0 * np.pi
+    else:
+        theta_a, theta_b = compute_theta2_limits(L1, L2, L3, L4)
+        theta2_min = min(theta_a, theta_b)
+        theta2_max = max(theta_a, theta_b)
+
+    # Simulation time
     t = 0.0
 
-    # Sweep input crank angle for one full revolution
-    while theta2 <= 2.0 * np.pi:
+    prev_theta4 = None
 
-        try:
-            # Solve for coupler and output angles
-            theta3, theta4 = solve_four_bar(
-                theta2, L1, L2, L3, L4, prev_solution
-            )
+    # --------------------------------------------------
+    # Forward sweep
+    # --------------------------------------------------
+    theta2 = theta2_min + 1e-4
 
-            # Store solution for next iteration
-            prev_solution = [theta3, theta4]
+    while theta2 <= theta2_max:
 
-        except RuntimeError:
-            # Solver failed (singular position)
-            # Skip this step safely
-            theta2 += step
-            t += dt
-            continue
+        theta3, theta4 = solve_four_bar(
+            theta2,
+            L1, L2, L3, L4,
+            prev_theta4
+        )
 
-        # Store results
+        prev_theta4 = theta4
+
         time_vals.append(t)
         theta2_vals.append(theta2)
         theta3_vals.append(theta3)
         theta4_vals.append(theta4)
 
-        # Increment input angle and time
         theta2 += step
         t += dt
 
-    # Convert lists to NumPy arrays
+    # --------------------------------------------------
+    # Backward sweep (for rocker mechanisms)
+    # --------------------------------------------------
+    if not input_is_crank:
+
+        theta2 = theta2_max - step
+
+        while theta2 >= theta2_min:
+
+            theta3, theta4 = solve_four_bar(
+                theta2,
+                L1, L2, L3, L4,
+                prev_theta4
+            )
+
+            prev_theta4 = theta4
+
+            time_vals.append(t)
+            theta2_vals.append(theta2)
+            theta3_vals.append(theta3)
+            theta4_vals.append(theta4)
+
+            theta2 -= step
+            t += dt
+
+    # --------------------------------------------------
+    # Convert results to numpy arrays
+    # --------------------------------------------------
+    theta2_array = np.array(theta2_vals)
+    theta3_array = np.array(theta3_vals)
+    theta4_array = np.array(theta4_vals)
+
     return {
         "time": np.array(time_vals),
-        "theta2": np.array(theta2_vals),
-        "theta3": np.array(theta3_vals),
-        "theta4": np.array(theta4_vals),
+        "theta2": theta2_array,
+        "theta3": theta3_array,
+        "theta4": theta4_array,
+        "is_change_point": is_change_point
     }
-
-
-# --------------------------------------------------
-# Standalone test (for debugging and learning)
-# --------------------------------------------------
-if __name__ == "__main__":
-    """
-    This block runs only when solver.py is executed directly.
-    It is useful for quick validation without web integration.
-    """
-
-    data = compute_four_bar(
-        L1=1.0,
-        L2=0.3,
-        L3=0.9,
-        L4=0.8,
-        step_deg=2.0,
-        rpm=30.0
-    )
-
-    print("Number of steps:", len(data["theta2"]))
-    print(
-        "Input angle range (deg):",
-        np.rad2deg([data["theta2"][0], data["theta2"][-1]])
-    )

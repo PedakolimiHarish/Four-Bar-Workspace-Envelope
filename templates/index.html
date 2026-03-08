@@ -55,6 +55,34 @@
             width: 800px;
             height: 600px;
         }
+
+        .info-panel {
+            width: 400px;
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            background: #f9f9f9;
+        }
+
+        .info-panel-title {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .info-group {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+
+        .info-title {
+            font-weight: bold;
+        }
+
+        .info-value {
+            color: #333;
+        }
     </style>
 </head>
 
@@ -68,15 +96,64 @@
             L1: <input id="L1" value="4">
             L2: <input id="L2" value="5">
             L3: <input id="L3" value="5">
-            L4: <input id="L4" value="4.9">
+            L4: <input id="L4" value="5">
+
+            <label for="driver">Driver Link:</label>
+            <select id="driver">
+                <option value="2">L2 (Input)</option>
+                <option value="4">L4 (Output)</option>
+            </select>
 
             <button onclick="runAnimation()">Run</button>
+
         </div>
+
+        <div id="error-box" style="
+            display:none;
+            color:#b00020;
+            background:#ffe6e6;
+            padding:10px;
+            margin-top:10px;
+            border-radius:5px;
+            font-weight:bold;">
+        </div>
+
+        <section class="control-section info-panel">
+            <h3 class="info-panel-title">Linkage Properties</h3>
+
+            <div class="info-group">
+                <span class="info-title">Assembly:</span>
+                <span class="info-value" id="assembly">-</span>
+            </div>
+
+            <div class="info-group">
+                <span class="info-title">Grashof Class:</span>
+                <span class="info-value" id="grashof-class">-</span>
+            </div>
+
+            <div class="info-group">
+                <span class="info-title">Mechanism Type:</span>
+                <span class="info-value" id="mechanism-type">-</span>
+            </div>
+
+            <div class="info-group">
+                <span class="info-title">Input Type:</span>
+                <span class="info-value" id="input-type">-</span>
+            </div>
+
+            <div class="info-group">
+                <span class="info-title">Output Type:</span>
+                <span class="info-value" id="output-type">-</span>
+            </div>
+        </section>
 
         <div id="plot"></div>
 
+        <div style="text-align:center; margin-top:10px;">
+            <button onclick="playAnimation()">▶ Play</button>
+            <button onclick="pauseAnimation()">⏸ Pause</button>
+        </div>
     </div>
-
 </body>
 
 </html>

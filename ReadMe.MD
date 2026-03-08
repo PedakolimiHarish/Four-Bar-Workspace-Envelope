@@ -181,6 +181,7 @@ A standard planar four-bar coordinate system is used:
 - Input validation and user-friendly error messages
 - Warnings for non-Grashof and change-point mechanisms
 - Improved user feedback for solver limitations
+- make everything into a single package
 
 ## Linkage Properties
 
