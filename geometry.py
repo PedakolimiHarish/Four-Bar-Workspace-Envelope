@@ -1,156 +1,107 @@
 """
 geometry.py
 
-This module converts four-bar linkage angles into actual 2D Cartesian positions.
+Converts four-bar linkage angles into Cartesian joint positions.
 
-It contains ONLY geometry.
-- No solvers
-- No numerical iteration
-- No plotting
-- No web logic
+This module handles geometry only.
+It does not perform solving, numerical iteration, or plotting.
 
-Input  : Angles (theta2, theta3)
-Output : Joint positions (A, B, C, D) and coupler point (P)
+Inputs
+------
+theta2, theta3, theta4 : link angles (radians)
+L1, L2, L3, L4         : link lengths
 
-Coordinate System:
-- Ground link is horizontal
-- Left ground joint A is at origin (0, 0)
-- Right ground joint D is at (L1, 0)
-- Motion is in the XY plane
+Outputs
+-------
+Joint coordinates A, B, C, D and a coupler point P.
+
+Coordinate system
+-----------------
+A = (0, 0)
+D = (L1, 0)
+Ground link is horizontal.
 """
 
 import numpy as np
 
-# --------------------------------------------------
-# Compute joint positions for ONE configuration
-
-# Convert link angles into Cartesian joint coordinates.
-# This defines the actual physical geometry of the mechanism.
 
 # --------------------------------------------------
+# Joint positions for one configuration
+# --------------------------------------------------
+
 def joint_positions(theta2, theta3, theta4, L1, L2, L3, L4):
     """
-    Computes positions of all joints for a single time step.
-
-    Parameters:
-    ----------
-    theta2 : float
-        Input crank angle (radians)
-
-    theta3 : float
-        Coupler link angle (radians)
-
-    theta4 : float
-        Output link angle (radians)
-
-    L1 : float
-        Length of fixed (ground) link
-
-    L2 : float
-        Length of input link
-
-    L3 : float
-        Length of coupler link
-
-    L4 : float
-        Length of output link
-        
-    Returns:
-    -------
-    A, B, C, D : numpy.ndarray
-        Cartesian coordinates of joints:
-        A -> left ground joint
-        B -> input-coupler joint
-        C -> coupler-output joint
-        D -> right ground joint
+    Compute joint coordinates for a single mechanism state.
     """
 
-    # -------------------------------
-    # Ground joints (fixed in space)
-    # -------------------------------
-
-    # Left ground joint (origin)
+    # Ground joints
     A = np.array([0.0, 0.0])
-
-    # Right ground joint (on X-axis)
     D = np.array([L1, 0.0])
 
-    # -------------------------------
-    # Input link (A -> B)
-    # -------------------------------
-
-    # Input link rotates about point A
-    # Polar-to-Cartesian conversion
+    # Input crank position
     B = np.array([
         L2 * np.cos(theta2),
         L2 * np.sin(theta2)
     ])
 
-     # --------------------------------
-    # Output link (D → C)
-    # --------------------------------
+    # Distance between B and D
+    dx = D[0] - B[0]
+    dy = D[1] - B[1]
+    d = np.sqrt(dx**2 + dy**2)
 
-    # Instead of computing C from B using theta3,
-    # we compute C from D using theta4.
-    # This ensures correct output rotation behavior.
-    C = D + np.array([
+    # Solve triangle B-C-D
+    a = (L3**2 - L4**2 + d**2) / (2 * d)
+    h_sq = L3**2 - a**2
+    h = np.sqrt(max(h_sq, 0))
+
+    xm = B[0] + a * dx / d
+    ym = B[1] + a * dy / d
+
+    # Two possible intersection points for C
+    xs1 = xm + h * (-dy) / d
+    ys1 = ym + h * dx / d
+
+    xs2 = xm - h * (-dy) / d
+    ys2 = ym - h * dx / d
+
+    # Choose the solution closest to the solver's predicted position
+    C_guess = D + np.array([
         L4 * np.cos(theta4),
         L4 * np.sin(theta4)
     ])
 
+    if np.linalg.norm([xs1 - C_guess[0], ys1 - C_guess[1]]) < \
+       np.linalg.norm([xs2 - C_guess[0], ys2 - C_guess[1]]):
+        C = np.array([xs1, ys1])
+    else:
+        C = np.array([xs2, ys2])
+
     return A, B, C, D
 
-# --------------------------------------------------
-# Compute a point on the coupler link
-
-# Compute a point located along the coupler link BC.
-# Useful for tracking coupler curves or workspace envelopes.
 
 # --------------------------------------------------
+# Point on the coupler link
+# --------------------------------------------------
+
 def coupler_point(B, C, ratio=1.0):
     """
-    Computes a point along the coupler link BC.
+    Returns a point along the coupler BC.
 
-    ratio = 1.0 → point at C
-    ratio = 0.5 → midpoint
-    ratio = 0.0 → point at B
+    ratio = 0 → B
+    ratio = 1 → C
     """
 
-    # Vector from B to C
     BC = C - B
+    return B + ratio * BC
 
-    # Point along BC
-    P = B + ratio * BC
-
-    return P
 
 # --------------------------------------------------
-# Compute geometry for entire simulation
-
-# Convert the full set of link angles into arrays of joint positions.
-# This produces the geometry used for animation and plotting.
-
+# Convert simulation angles to geometry arrays
 # --------------------------------------------------
+
 def compute_geometry(data, L1, L2, L3, L4, coupler_ratio=1.0):
     """
-    Converts angle arrays into joint position arrays.
-
-    Parameters:
-    ----------
-    data : dict
-        Contains theta2, theta3, theta4 arrays
-
-    L1, L2, L3, L4 : float
-        Link lengths
-
-    coupler_ratio : float
-        Location of point along BC (default = 1 → at C)
-
-    Returns:
-    -------
-    geometry : dict
-        Contains arrays:
-        A, B, C, D, P
+    Generate joint coordinate arrays for the full simulation.
     """
 
     A_list = []
@@ -165,13 +116,11 @@ def compute_geometry(data, L1, L2, L3, L4, coupler_ratio=1.0):
         data["theta4"]
     ):
 
-        # Compute joint positions
         A, B, C, D = joint_positions(
             theta2, theta3, theta4,
             L1, L2, L3, L4
         )
 
-        # Compute coupler point along BC
         P = coupler_point(B, C, ratio=coupler_ratio)
 
         A_list.append(A)

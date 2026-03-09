@@ -99,6 +99,9 @@ async function runAnimation() {
 
         document.getElementById("output-type").innerText =
             data.properties["Output Type"] || "-";
+
+        document.getElementById("workspace-area").innerText =
+            (data.properties["Workspace Area"] ?? "-") + " units²";
     }
     frames = [];
     animationIndex = 0;
